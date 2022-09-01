@@ -1,0 +1,116 @@
+---
+title: "README"
+geometry: margin = 1in
+output: pdf_document
+---
+
+# A design and analytic strategy for monitoring disease positivity and case characteristics in accessible closed populations 
+
+## by Robert H. Lyles, Yuzi Zhang, Lin Ge, and Lance A. Waller
+
+Illustrate calculations for case count and continuous mean estimations with a simulated dataset
+
+The data was simulated under the anchor stream design with the setting in which ($N_{\text{tot}}=500, \text{ selection probability into the random sample }\psi=0.1, \text{ prevalence}\; p=0.2$). \
+
+The simulated dataset has 196 observations, each observation includes a continuous random variable ($\texttt{x}$) representing a hypothetical biomarker level, indicators of capture status ($\texttt{y}_1$ for Stream 1, and $\texttt{y}_2$ for Stream 2), symptom ($\texttt{sympt}$), and disease ($\texttt{case}$). For the continuous random variable, it was drawn from a mixture of normal distributions with the mean and the variance differing according to symptom status and disease status. Specifically, normal distributions used for generating data are given by
+
+\begin{tabular}{|c|c|c|}
+\hline
+     & symptom =1 & symptom = 0 \\ \hline
+ case=1    & $N(10, 0.75^2)$ & $N(5, 0.5^2)$ \\ \hline
+  case=0    & $N(2.5, 1.2^2)$ & $N(1, 1.5^2)$ \\ \hline
+\end{tabular}
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+library(kableExtra)
+library(xtable)
+library(knitr)
+library(coda)
+library(pander)
+library(MCMCpack)
+```
+
+### read in self-defined functions and the simulated dataset
+```{r}
+source("FUN_AnchorStream.R")
+load("toydata.rda") 
+```
+
+### take a look of the simulated inidividual-level data
+```{r, echo=FALSE}
+head(dat.obs)
+```
+
+### observed cell counts 
+```{r, echo=FALSE}
+Ntot = 500; p2 = 0.1
+sum.dat <- get_nxbar_obs(dat.obs = dat.obs, Ntot = Ntot)
+nobs.vec <- sum.dat$nvec
+nobs.vec.print <- as.data.frame(matrix(nobs.vec, nrow = 1))
+colnames(nobs.vec.print) <- paste0("n", 1:7)
+rownames(nobs.vec.print) <- NULL
+kbl(nobs.vec.print, booktabs = T) %>% 
+   kable_styling(latex_options = c("hold_position")) 
+```
+
+### case count estimates based on the simulated data
+```{r}
+Ntot = 500
+p2 = 0.1
+re.counts <- AnchorStream_CaseCount(dat.obs = dat.obs,
+                                    Ntot = Ntot, p2 = p2,
+                                    num.post = 10000,
+                                    seed = 1234,
+                                    data.type = "individual",
+                                    cellcounts.vec = NULL)
+```
+
+results from using random sample alone
+```{r}
+re.counts$pointest$Nhat.RS
+re.counts$SE$SE.RS.FPC
+re.counts$CI$CI.RS.Jeffreys
+```
+
+results from using the estiamtor $\hat{N}_{\psi}$
+```{r}
+re.counts$pointest$Nhat.psi
+re.counts$SE$SE.Nhat.psi
+re.counts$CI$CI.Nhat.psi.Diri
+```
+
+results from using the estiamtor $\hat{N}_{\hat{\psi}^*}$
+```{r}
+re.counts$pointest$Nhat.psihatstar
+re.counts$SE$SE.Nhat.psihatstar
+re.counts$CI$CI.Nhat.psihatstar.Diri
+```
+
+### continuous mean estimates based on the simulated data
+```{r}
+re.continuous <- AnchorStream_Continuous(dat.obs = dat.obs,
+                                         Ntot = Ntot, seed = 12345,
+                                         nboot = 1000)
+```
+
+results of estimating overall mean
+```{r}
+re.continuous$overall
+```
+
+results of estimating continuous mean among cases
+```{r}
+re.continuous$cases
+```
+
+results of estimating continuous mean among non-cases
+```{r}
+re.continuous$noncases
+```
+
+results of estimating continuous mean difference for cases relative to non-cases
+```{r}
+re.continuous$difference
+```
+
+
