@@ -40,6 +40,182 @@ get_nxbar_obs <- function(dat.obs, Ntot){
 }
 
 
+get_Npost <- function(Ntot, dat.obs,
+                      num.post, data.type, 
+                      cellcounts.vec, 
+                      VNhatWTDavgF){
+  ### INPUT: 
+  # dat.obs: observed data frame 
+  # num.post: number of samples drawn from Dirichlet posterior 
+  # data.type: {"individual", "aggregated}
+  
+  if(data.type == "individual"){
+    ## # cases selected into S2
+    num.sel.2 = sum(dat.obs$y2 == 1)
+    ## # number of cases selected into S2 
+    num.pos.2 = sum(dat.obs$y2 == 1 & dat.obs$case == 1)
+    
+    ## # selected in both S1 and S2 that are CV negative
+    n11.noCV = sum(dat.obs$y1 == 1 & dat.obs$y2 == 1 & dat.obs$case == 0)
+    ## # selected in S1 but not in S2 that are CV negative
+    n10.noCV = sum(dat.obs$y1 == 1 & dat.obs$y2 == 0 & dat.obs$case == 0)
+    ## # selected in S2 but not in S1 that are CV negative
+    n01.noCV = sum(dat.obs$y1 == 0 & dat.obs$y2 == 1 & dat.obs$case == 0)
+    
+    ## # selected in both S1 and S2 that are CV positive
+    n11.CV = sum(dat.obs$y1 == 1 & dat.obs$y2 == 1 & dat.obs$case == 1)
+    ## # selected in S1 but not in S2 that are CV positive
+    n10.CV = sum(dat.obs$y1 == 1 & dat.obs$y2 == 0 & dat.obs$case == 1)
+    ## # selected in S2 but not in S1 that are CV positive
+    n01.CV = sum(dat.obs$y1 == 0 & dat.obs$y2 == 1 & dat.obs$case == 1)
+    
+    nc.CV = n11.CV + n10.CV + n01.CV
+    nc.noCV = n11.noCV + n10.noCV + n01.noCV
+    
+    n11add.CV = max(n11.CV, 0.5)
+    n01add.CV = max(n01.CV, 0.5)
+    n10add.CV = max(n10.CV, 0.5)
+    
+    npos1 = n11.CV + n10.CV; npos2 = n11.CV + n01.CV 
+    n1 = n11.noCV; n2 = n11.CV
+    n3 = n10.noCV; n4 = n10.CV
+    n5 = n01.noCV; n6 = n01.CV
+    n7 = Ntot - n1 - n2 - n3 - n4 - n5 - n6 
+  }
+  
+  if(data.type == "aggregated"){
+    
+    n1 = cellcounts.vec[1]; n2 = cellcounts.vec[2]
+    n3 = cellcounts.vec[3]; n4 = cellcounts.vec[4]
+    n5 = cellcounts.vec[5]; n6 = cellcounts.vec[6]
+    n7 = cellcounts.vec[7]
+    
+    num.sel.2 = n1 + n2 + n5 + n6
+    num.pos.2 = n2 + n6
+    
+    n11.noCV = n1; n11.CV = n2
+    n10.noCV = n3; n10.CV = n4
+    n01.noCV = n5; n01.CV = n6
+    
+    n11add.CV = max(n11.CV, 0.5)
+    n01add.CV = max(n01.CV, 0.5)
+    n10add.CV = max(n10.CV, 0.5)
+    
+    nc.CV = n11.CV + n10.CV + n01.CV
+    nc.noCV = n11.noCV + n10.noCV + n01.noCV
+    
+    n11 = n11.CV + n11.noCV
+    n10 = n10.CV + n10.noCV
+    n01 = n01.CV + n01.noCV
+    nc = n11 + n10 + n01
+    npos1 = n11.CV + n10.CV; npos2 = n11.CV + n01.CV 
+    
+  }
+  
+  pihat.S1 = (n2 + n4)/(n1 + n2 + n3 + n4)
+  pihat.S1bar = (n6 + n7*n6/(n5+n6))/(n5+n6+n7)
+  psihat = (n1+n2+n5+n6)/Ntot # pr(selected in S2)
+  phihat = (n1+n2+n3+n4)/Ntot # pr(selected in S1)
+  
+  phat.CV = pihat.S1*phihat + pihat.S1bar*(1-phihat)
+  Nhat.CV = phat.CV*Ntot
+  
+  ## estimated psi ##
+  psiEstimate = num.sel.2/Ntot
+  VhatNhatPsiMLB = n01add.CV*(1-psiEstimate)/(psiEstimate^2)
+  
+  ## generate a Dirichlet random variable with parameters with 
+  # n1 + 0.5, ..., n3 + 0.5
+  pstarcond <- rdirichlet(num.post, 
+                          alpha = c(n11.CV, n10.CV, n01.CV) + 0.5) #num.post*3
+  ptotcheck = rowSums(pstarcond)
+  p1starpost = rowSums(pstarcond[,1:2])
+  p1post = psiEstimate*p1starpost/(psiEstimate*p1starpost + pstarcond[,3])
+  p2giv1starpost = pstarcond[,1]/(pstarcond[,1] + pstarcond[,2])
+  
+  p11post = p2giv1starpost*p1post
+  p10post = (1-p2giv1starpost)*p1post
+  p01post = psiEstimate*(1-p1post)
+  pcpost = p11post + p10post + p01post 
+  
+  Nfirst = round(nc.CV/pcpost)
+  Nfirst[Nfirst == 0] <- 1
+  ncnew = rbinom(num.post, size = Nfirst, prob = pcpost)
+  
+  n11post = ncnew*pstarcond[,1]
+  n10post = ncnew*pstarcond[,2]
+  n01post = ncnew*pstarcond[,3]
+  
+  Npsipost = n11post + n10post + n01post/psiEstimate
+  NpsipostUnAdj = Npsipost
+  
+  ### For details please refer to eqn. (A.5) in Appendix A ###
+  a = sqrt(min(VNhatWTDavgF/VhatNhatPsiMLB, 1)) # updated on 01/20/2023
+  # a = sqrt(VNhatWTDavgF/VhatNhatPsiMLB)
+  b = Nhat.CV*(1-a)
+  Npsipost = a*Npsipost + b
+  
+  return(list(NpsipostUnAdj = NpsipostUnAdj,
+              Npsipost = Npsipost))
+  
+}
+
+get_fpc <- function(Ntotal, Nselect){
+  fpc.re = (Ntotal - Nselect)*Nselect/(Ntotal*(Nselect-1))
+  fpc.re = min(fpc.re, 1)
+  return(fpc.re)
+}
+
+get_Nhatpsihatstar <- function(dat.vec){
+  re = sum(dat.vec[c(2, 4)]) + 
+    dat.vec[6]*sum(dat.vec[5:7])/sum(dat.vec[5:6])
+  return(re)
+}
+
+get_Nhatbigmulti <- function(dat.vec, p2){
+  Ntotal = sum(dat.vec)
+  comp1 = dat.vec[2]/(sum(dat.vec[1:2]))
+  comp2 = dat.vec[4]/(sum(dat.vec[3:4]))
+  comp3 = dat.vec[6]/(sum(dat.vec[5:6]))
+  comp4 = sum(dat.vec[1:4])/Ntotal
+  re = Ntotal*(p2*comp1*comp4 + (1-p2)*comp2*comp4 + comp3*(1-comp4))
+  return(re)
+}
+
+get_pforvar <- function(num.sel.input, N.input){
+  
+  if(N.input == 0){N.input = 1}
+  
+  if(num.sel.input == 0){
+    p.re = (num.sel.input + 0.5)/N.input
+  }else if(num.sel.input == N.input){
+    p.re = (num.sel.input - 0.5)/N.input
+  }else{
+    p.re = num.sel.input/N.input
+  }
+  return(p.re)
+}
+
+
+get_Npost_diri <- function(dat.simed, 
+                           gfun, gfun.name,
+                           a.scale, N.est, 
+                           p2 = NULL){
+  
+  if(gfun.name == "get_Nhatbigmulti"){
+    Npost.unadj <- apply(dat.simed, 2, function(x){gfun(x, p2 = p2)})
+  }else if(gfun.name == "get_Nhatpsihatstar"){
+    Npost.unadj <- apply(dat.simed, 2, function(x){gfun(x)})
+  }
+  
+  b.shape = N.est*(1 - a.scale)
+  Npost.adj <- a.scale*Npost.unadj + b.shape
+  
+  return(list(Npost.unadj = Npost.unadj,
+              Npost.adj = Npost.adj))
+}
+
+
 ## A function to estimate case count using N_RS, Nhat_psi and Nhat_psihat_star 
 ## based on individual-level data or aggregated cell counts 
 AnchorStream_CaseCount <- function(dat.obs = NULL, Ntot, p2, 
@@ -95,6 +271,7 @@ AnchorStream_CaseCount <- function(dat.obs = NULL, Ntot, p2,
     n10.CV = sum(dat.obs$y1 == 1 & dat.obs$y2 == 0 & dat.obs$case == 1)
     ## # selected in S2 but not in S1 that are CV positive
     n01.CV = sum(dat.obs$y1 == 0 & dat.obs$y2 == 1 & dat.obs$case == 1)
+    
     n11add.CV = max(n11.CV, 0.5)
     n01add.CV = max(n01.CV, 0.5)
     n10add.CV = max(n10.CV, 0.5)
@@ -104,6 +281,7 @@ AnchorStream_CaseCount <- function(dat.obs = NULL, Ntot, p2,
     n10 = n10.CV + n10.noCV
     n01 = n01.CV + n01.noCV
     nc = n11 + n10 + n01
+    nc.noCV = n11.noCV + n10.noCV + n01.noCV
     
     ## rename variables based on the notation used in Table 2 of anchor stream paper
     npos1 = n11.CV + n10.CV; npos2 = n11.CV + n01.CV 
@@ -132,6 +310,8 @@ AnchorStream_CaseCount <- function(dat.obs = NULL, Ntot, p2,
     n10add.CV = max(n10.CV, 0.5)
     
     nc.CV = n11.CV + n10.CV + n01.CV
+    nc.noCV = n11.noCV + n10.noCV + n01.noCV
+    
     n11 = n11.CV + n11.noCV
     n10 = n10.CV + n10.noCV
     n01 = n01.CV + n01.noCV
@@ -140,6 +320,7 @@ AnchorStream_CaseCount <- function(dat.obs = NULL, Ntot, p2,
     
   }
   
+  nobs.vec = c(n1, n2, n3, n4, n5, n6, n7)
   pihat.S1 = (n2 + n4)/(n1 + n2 + n3 + n4)
   pihat.S1bar = (n6 + n7*n6/(n5+n6))/(n5+n6+n7)
   psihat = (n1+n2+n5+n6)/Ntot # pr(selected in S2)
@@ -163,6 +344,7 @@ AnchorStream_CaseCount <- function(dat.obs = NULL, Ntot, p2,
   
   CI.wald.RS.FPC = NhatUse2Only + c(-1.96, 1.96)*SEhatNhatUse2OnlyWithFPC
   CI.wald.RS.FPC[1] = max(nc.CV, CI.wald.RS.FPC[1])
+  CI.wald.RS.FPC[2] = min(Ntot - nc.noCV, CI.wald.RS.FPC[2])
   
   ## Jeffreys interval based only on Stream 2
   alphpost = num.pos.2 + 0.5
@@ -190,7 +372,9 @@ AnchorStream_CaseCount <- function(dat.obs = NULL, Ntot, p2,
   ## Allow Stream 2 Only CI to account for observed nc 
   LL_JeffreysFPCKnowNc = max(nc.CV, LL_JeffreysFPC)
   UL_JeffreysFPCKnowNc = max(nc.CV, UL_JeffreysFPC)
-  
+  ## cap of CI, Ntot - nc.noCV ##
+  UL_JeffreysFPCKnowNc = min(Ntot - nc.noCV, UL_JeffreysFPCKnowNc)
+
   CI.RS.Jeffreys = c(LL_JeffreysFPCKnowNc, UL_JeffreysFPCKnowNc)
   
   
@@ -200,7 +384,7 @@ AnchorStream_CaseCount <- function(dat.obs = NULL, Ntot, p2,
   SEhatNhatKnownPsiML = sqrt(n01add.CV*(1-p2)/(p2^2))
   CI.wald.Nhatpsi = NhatKnownPsiML + c(-1.96, 1.96)*SEhatNhatKnownPsiML
   CI.wald.Nhatpsi[1] = max(nc.CV, CI.wald.Nhatpsi[1])
-  
+  CI.wald.Nhatpsi[2] = min(Ntot - nc.noCV, CI.wald.Nhatpsi[2])
   
   ## variance estimator of LP estimator ##
   VhatLP12 = (n11add.CV + n10add.CV)*(n11add.CV + n01add.CV)*
@@ -208,178 +392,118 @@ AnchorStream_CaseCount <- function(dat.obs = NULL, Ntot, p2,
   VNhatWTDavgF = 1/(1/VNhatUse2OnlyWithFPC + 1/VhatLP12)
   SEhatNhatWTDavgF = sqrt(VNhatWTDavgF)
   LLEstimatedPsiMLnew3 = max(nc.CV, Nhat.CV - 1.96*SEhatNhatWTDavgF)
-  ULEstimatedPsiMLnew3 = Nhat.CV + 1.96*SEhatNhatWTDavgF
+  ULEstimatedPsiMLnew3 = min(Ntot - nc.noCV, Nhat.CV + 1.96*SEhatNhatWTDavgF)
   
   CI.wald.Nhatpsihatstar = c(LLEstimatedPsiMLnew3, ULEstimatedPsiMLnew3)
   
-  ### get Dirichlet-multinomial-based credible intervals (see Appendix A) ###
-  get_credint <- function(Ntot, dat.obs, 
-                          num.post, data.type,
-                          cellcounts.vec){
-    ### INPUT: 
-    # dat.obs: observed data frame 
-    # num.post: number of samples drawn from Dirichlet posterior 
-    # data.type: {"individual", "aggregated}
-    
-    if(data.type == "individual"){
-      ## # cases selected into S2
-      num.sel.2 = sum(dat.obs$y2 == 1)
-      ## # number of cases selected into S2 
-      num.pos.2 = sum(dat.obs$y2 == 1 & dat.obs$case == 1)
-      
-      ## # selected in both S1 and S2 that are CV negative
-      n11.noCV = sum(dat.obs$y1 == 1 & dat.obs$y2 == 1 & dat.obs$case == 0)
-      ## # selected in S1 but not in S2 that are CV negative
-      n10.noCV = sum(dat.obs$y1 == 1 & dat.obs$y2 == 0 & dat.obs$case == 0)
-      ## # selected in S2 but not in S1 that are CV negative
-      n01.noCV = sum(dat.obs$y1 == 0 & dat.obs$y2 == 1 & dat.obs$case == 0)
-      
-      ## # selected in both S1 and S2 that are CV positive
-      n11.CV = sum(dat.obs$y1 == 1 & dat.obs$y2 == 1 & dat.obs$case == 1)
-      ## # selected in S1 but not in S2 that are CV positive
-      n10.CV = sum(dat.obs$y1 == 1 & dat.obs$y2 == 0 & dat.obs$case == 1)
-      ## # selected in S2 but not in S1 that are CV positive
-      n01.CV = sum(dat.obs$y1 == 0 & dat.obs$y2 == 1 & dat.obs$case == 1)
-      nc.CV = n11.CV + n10.CV + n01.CV
-      n11add.CV = max(n11.CV, 0.5)
-      n01add.CV = max(n01.CV, 0.5)
-      n10add.CV = max(n10.CV, 0.5)
-      
-      npos1 = n11.CV + n10.CV; npos2 = n11.CV + n01.CV 
-      n1 = n11.noCV; n2 = n11.CV
-      n3 = n10.noCV; n4 = n10.CV
-      n5 = n01.noCV; n6 = n01.CV
-      n7 = Ntot - n1 - n2 - n3 - n4 - n5 - n6 
-    }
-
-    if(data.type == "aggregated"){
-      
-      n1 = cellcounts.vec[1]; n2 = cellcounts.vec[2]
-      n3 = cellcounts.vec[3]; n4 = cellcounts.vec[4]
-      n5 = cellcounts.vec[5]; n6 = cellcounts.vec[6]
-      n7 = cellcounts.vec[7]
-      
-      num.sel.2 = n1 + n2 + n5 + n6
-      num.pos.2 = n2 + n6
-      
-      n11.noCV = n1; n11.CV = n2
-      n10.noCV = n3; n10.CV = n4
-      n01.noCV = n5; n01.CV = n6
-      
-      n11add.CV = max(n11.CV, 0.5)
-      n01add.CV = max(n01.CV, 0.5)
-      n10add.CV = max(n10.CV, 0.5)
-      
-      nc.CV = n11.CV + n10.CV + n01.CV
-      n11 = n11.CV + n11.noCV
-      n10 = n10.CV + n10.noCV
-      n01 = n01.CV + n01.noCV
-      nc = n11 + n10 + n01
-      npos1 = n11.CV + n10.CV; npos2 = n11.CV + n01.CV 
-      
-    }
-    
-    pihat.S1 = (n2 + n4)/(n1 + n2 + n3 + n4)
-    pihat.S1bar = (n6 + n7*n6/(n5+n6))/(n5+n6+n7)
-    psihat = (n1+n2+n5+n6)/Ntot # pr(selected in S2)
-    phihat = (n1+n2+n3+n4)/Ntot # pr(selected in S1)
-    
-    phat.CV = pihat.S1*phihat + pihat.S1bar*(1-phihat)
-    Nhat.CV = phat.CV*Ntot
-    
-    ## estimated psi ##
-    psiEstimate = num.sel.2/Ntot
-    VhatNhatPsiMLB = n01add.CV*(1-psiEstimate)/(psiEstimate^2)
-    
-    ## generate a Dirichlet random variable with parameters with 
-    # n1 + 0.5, ..., n3 + 0.5
-    pstarcond <- rdirichlet(num.post, 
-                            alpha = c(n11.CV, n10.CV, n01.CV) + 0.5) #num.post*3
-    ptotcheck = rowSums(pstarcond)
-    p1starpost = rowSums(pstarcond[,1:2])
-    p1post = psiEstimate*p1starpost/(psiEstimate*p1starpost + pstarcond[,3])
-    p2giv1starpost = pstarcond[,1]/(pstarcond[,1] + pstarcond[,2])
-    
-    p11post = p2giv1starpost*p1post
-    p10post = (1-p2giv1starpost)*p1post
-    p01post = psiEstimate*(1-p1post)
-    pcpost = p11post + p10post + p01post 
-    
-    Nfirst = round(nc.CV/pcpost)
-    Nfirst[Nfirst == 0] <- 1
-    ncnew = rbinom(num.post, size = Nfirst, prob = pcpost)
-    
-    n11post = ncnew*pstarcond[,1]
-    n10post = ncnew*pstarcond[,2]
-    n01post = ncnew*pstarcond[,3]
-    
-    Npsipost = n11post + n10post + n01post/psiEstimate
-    Npsipost = pmax(rep(nc.CV, num.post), Npsipost)
-    NpsipostUnAdj = Npsipost
-    
-    ### For details please refer to eqn. (A.5) in Appendix A ###
-    a = sqrt(VNhatWTDavgF/VhatNhatPsiMLB)
-    b = Nhat.CV*(1-a)
-    Npsipost = a*Npsipost + b
-    Npsipost = pmax(rep(nc.CV, num.post), Npsipost)
-    
-    ### unadjusted CIs ###
-    LL.unadj = quantile(NpsipostUnAdj, 0.025, na.rm = T)
-    UL.unadj = quantile(NpsipostUnAdj, 0.975, na.rm = T)
-    
-    ### adjusted CIs ###
-    ### compute variance of Chapman estimator ##
-    VhatCH12 = (n11.CV + n10.CV + 1)*(n11.CV + n01.CV + 1)*(n10add.CV*n01add.CV)/
-      ((n11.CV + 1)^2*(n11.CV + 2))
-    ### compute variance of random sample estimator with FPC adjustment ###
-    phat2 = num.pos.2/num.sel.2
-    NhatUse2Only = phat2*Ntot
-    phat2 = max(num.pos.2, .5)/num.sel.2
-    Vphat2 = phat2*(1-phat2)/num.sel.2
-    VNhatUse2Only = Ntot^2*Vphat2
-    # Get estimated SE for RS estimator with FPC included
-    fpcCochran = (Ntot - num.sel.2)*num.sel.2/(Ntot*(num.sel.2-1))
-    fpcCochran = min(fpcCochran, 1)
-    VNhatUse2OnlyWithFPC = fpcCochran*VNhatUse2Only
-    SEhatNhatUse2OnlyWithFPC = sqrt(VNhatUse2OnlyWithFPC)
-    
-    LL.ab = quantile(Npsipost, 0.025, na.rm = T)
-    UL.ab = quantile(Npsipost, 0.975, na.rm = T)
-    SE.avg = sqrt((VhatCH12 + VNhatUse2OnlyWithFPC)/4)
-    LL.avg = max(nc.CV, Nhat.CV - 1.96*SE.avg)
-    UL.avg = Nhat.CV + 1.96*SE.avg
-    LL.adj = min(LL.ab, (LL.ab+LL.avg)/2)
-    UL.adj = max(UL.ab, (UL.ab+UL.avg)/2) 
-    
-    phatCOVID = Nhat.CV/Ntot
-    if(phatCOVID < 0.2 | is.na(phatCOVID)){
-      return(list(Nhatpsihatstar = c(LL.unadj, UL.unadj),
-                  Nhatpsi = c(LL.unadj, UL.unadj)))
-    }else{
-      return(list(Nhatpsihatstar = c(LL.adj, UL.adj),
-                  Nhatpsi = c(LL.unadj, UL.unadj)))
-    }
-  }
-  re.credint <- get_credint(Ntot = Ntot, 
-                            dat.obs = dat.obs, 
+  ### get posterior samples used to construct ###
+  ### Dirichlet-multinomial-based credible intervals (see Appendix A) ###
+  Npsipost_all <- get_Npost(Ntot = Ntot, dat.obs = dat.obs,
                             num.post = num.post,
                             data.type = data.type,
-                            cellcounts.vec = cellcounts.vec)
+                            cellcounts.vec = cellcounts.vec,
+                            VNhatWTDavgF = VNhatWTDavgF)
   
-  CI.Diri.Nhatpsihatstar <- re.credint$Nhatpsihatstar
+  NpsipostUnAdj <- Npsipost_all$NpsipostUnAdj
+  
+  Npsipost <- Npsipost_all$Npsipost
+  LL.ab = max(nc.CV, quantile(Npsipost, 0.025, na.rm = T))
+  UL.ab = min(Ntot - nc.noCV, quantile(Npsipost, 0.975, na.rm = T))
+  
+  ### unadjusted credible interval ###
+  CI.Nhat.psi.Diri <- as.numeric(c(max(nc.CV,
+                                       quantile(NpsipostUnAdj, 0.025, na.rm = T)),
+                                   min(Ntot - nc.noCV,
+                                       quantile(NpsipostUnAdj, 0.975, na.rm = T))))
+  
+  
+  ### implement approach based on the multinational dist for 7-cell counts ###
+  pi11.hat <- n2/(n1 + n2)
+  pi10.hat <- n4/(n3 + n4)
+  pi01.hat <- n6/(n5 + n6)
+  phi.hat <- (n1 + n2 + n3 + n4)/Ntot
+  
+  n1.add <- max(n1, 0.5); n2.add <- max(n2, 0.5)
+  n3.add <- max(n3, 0.5); n4.add <- max(n4, 0.5)
+  n5.add <- max(n5, 0.5); n6.add <- max(n6, 0.5)
+  n7.add <- max(n7, 0.5)
+  
+  var.bigmulti <- diag(x = rep(1, 4))
+  pi11.hat.1 <- get_pforvar(n2.add, n1.add + n2.add)
+  pi10.hat.1 <- get_pforvar(n4.add, n3.add + n4.add)
+  pi01.hat.1 <- get_pforvar(n6.add, n5.add + n6.add)
+  phi.hat.1 <- get_pforvar(n1.add + n2.add + n3.add + n4.add, Ntot)
+  var.bigmulti[1,1] <- pi11.hat.1*(1 - pi11.hat.1)/(n1.add + n2.add)
+  var.bigmulti[2,2] <- pi10.hat.1*(1 - pi10.hat.1)/(n3.add + n4.add)
+  var.bigmulti[3,3] <- pi01.hat.1*(1 - pi01.hat.1)/(n5.add + n6.add)
+  var.bigmulti[4,4] <- phi.hat.1*(1 - phi.hat.1)/Ntot
+  fpc.vec <- c(get_fpc(Ntotal = n1.add + n2.add + n3.add + n4.add, 
+                       Nselect = n1.add + n2.add),
+               get_fpc(Ntotal = n1.add + n2.add + n3.add + n4.add, 
+                       Nselect = n3.add + n4.add),
+               get_fpc(Ntotal = n5.add + n6.add + n7.add, Nselect = n5.add + n6.add))
+  
+  ### FPC adjustments ###
+  var.bigmulti.fpc <- var.bigmulti
+  var.bigmulti.fpc[1,1] <- fpc.vec[1]*var.bigmulti[1,1]
+  var.bigmulti.fpc[2,2] <- fpc.vec[2]*var.bigmulti[2,2]
+  var.bigmulti.fpc[3,3] <- fpc.vec[3]*var.bigmulti[3,3]
+  
+  ### first-derivative of Nhat give in Lin's notes dated on 01/27/2023
+  deriv.bigmulti <- Ntot*c(p2*phi.hat.1,
+                           (1-p2)*phi.hat.1,
+                           (1-phi.hat.1),
+                           (p2*pi11.hat.1 + (1-p2)*pi10.hat.1 - pi01.hat.1))
+  
+  var.N.bigmulti <- sum((diag(var.bigmulti)[1:3])*
+                          (deriv.bigmulti[1:3])^2)
+  var.N.bigmulti.fpc <- sum((diag(var.bigmulti.fpc)[1:3])*
+                              (deriv.bigmulti[1:3])^2)
+  
+  var.N.bigmulti.fpc.avg <- 0.5*(var.N.bigmulti.fpc + VNhatWTDavgF)
+  
+  pstarcond.bigmulti <- rdirichlet(num.post,
+                                   alpha = nobs.vec + 0.5)
+  dat.simed <- apply(pstarcond.bigmulti, 1, function(x) round(Ntot*x))
+  
+  nobs.vec[nobs.vec == 0] <- 0.5
+  a.parm <- var.N.bigmulti.fpc.avg/var.N.bigmulti
+  a.parm <- ifelse(is.nan(a.parm), 1, a.parm)
+  
+  Nhat.bigmulti <- get_Nhatbigmulti(dat.vec = nobs.vec, p2 = p2)
+  Npost.bigmulti <- get_Npost_diri(dat.simed = dat.simed,
+                                   gfun = get_Nhatbigmulti,
+                                   gfun.name = "get_Nhatbigmulti",
+                                   a.scale = sqrt(min(a.parm, 1)),
+                                   N.est = Nhat.CV,
+                                   p2 = p2)
+  
+  CI.bigmulti.adj <- as.numeric(quantile(Npost.bigmulti$Npost.adj,
+                                         c(0.025, 0.975), na.rm = T))
+  CI.bigmulti.adj <- c(max(nc.CV, CI.bigmulti.adj[1]),
+                       min(Ntot - nc.noCV, CI.bigmulti.adj[2]))
+  
+
+  CI.bigmulti.FPC.wald = c(max(nc.CV, 
+                               Nhat.CV - 1.96*sqrt(var.N.bigmulti.fpc.avg)),
+                           min(Ntot - nc.noCV, 
+                               Nhat.CV + 1.96*sqrt(var.N.bigmulti.fpc.avg)))
   
   re.point = data.frame(Nhat.RS = NhatUse2Only,
                         Nhat.psi = NhatKnownPsiML,
                         Nhat.psihatstar = Nhat.CV)
+  
   re.se = data.frame(SE.RS.FPC = SEhatNhatUse2OnlyWithFPC,
                      SE.Nhat.psi = SEhatNhatKnownPsiML,
-                     SE.Nhat.psihatstar = SEhatNhatWTDavgF)
+                     SE.Nhat.psihatstar = sqrt(var.N.bigmulti.fpc.avg))
+  
+  ### UPDATE on 03/02/2023 ###
   re.CI = list(CI.RS.wald.FPC = CI.wald.RS.FPC,
                CI.RS.Jeffreys = CI.RS.Jeffreys,
                CI.Nhat.psi.wald = CI.wald.Nhatpsi,
-               CI.Nhat.psi.Diri = as.numeric(re.credint$Nhatpsi),
-               CI.Nhat.psihatstar.wald = CI.wald.Nhatpsihatstar,
-               CI.Nhat.psihatstar.Diri = CI.Diri.Nhatpsihatstar)
+               CI.Nhat.psi.Diri = CI.Nhat.psi.Diri,
+               CI.Nhat.psihatstar.wald = CI.bigmulti.FPC.wald,
+               CI.Nhat.psihatstar.Diri = CI.bigmulti.adj)
   
   re = list(pointest = re.point,
             SE = re.se,

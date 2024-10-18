@@ -17,7 +17,8 @@
 library(MCMCpack) 
 
 ## load in self-defined functions and read in simulated dataset 
-source("FUN_AnchorStream.R")
+# source("/Users/zhangyuzi/Documents/Bob_Lyles/Bob/code/FUN_AnchorStream_020923.R")
+source("FUN_AnchorStream_020923.R")
 load("toydata.rda") # dat.obs
 
 
@@ -34,9 +35,11 @@ re.counts <- AnchorStream_CaseCount(dat.obs = dat.obs,
                                     data.type = "individual",
                                     cellcounts.vec = NULL)
 
+re.counts
+
 ## case counts estimation using cell counts
 ### get cell counts as presented in Table 1 from individual-level data
-nobs.bec <- get_nxbar_obs(dat.obs = dat.obs, Ntot = Ntot)$nvec
+nobs.vec <- get_nxbar_obs(dat.obs = dat.obs, Ntot = Ntot)$nvec
 re.counts.1 <- AnchorStream_CaseCount(dat.obs = NULL,
                                       Ntot = Ntot, p2 = p2,
                                       num.post = 10000,
