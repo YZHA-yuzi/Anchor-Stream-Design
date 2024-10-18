@@ -8,16 +8,24 @@ with a simulated dataset
 
 The data was simulated under the anchor stream design with the setting
 in which
-($N_{\text{tot}}=500, \text{ selection probability into the random sample }\psi=0.1, \text{ prevalence}\; p=0.2$).  
+(![N\_{\text{tot}}=500, \text{ selection probability into the random sample }\psi=0.1, \text{ prevalence}\\ p=0.2](https://latex.codecogs.com/png.latex?N_%7B%5Ctext%7Btot%7D%7D%3D500%2C%20%5Ctext%7B%20selection%20probability%20into%20the%20random%20sample%20%7D%5Cpsi%3D0.1%2C%20%5Ctext%7B%20prevalence%7D%5C%3B%20p%3D0.2 "N_{\text{tot}}=500, \text{ selection probability into the random sample }\psi=0.1, \text{ prevalence}\; p=0.2")).  
 
 The simulated dataset has 196 observations, each observation includes a
-continuous random variable ($\texttt{x}$) representing a hypothetical
-biomarker level, indicators of capture status ($\texttt{y}_1$ for Stream
-1, and $\texttt{y}_2$ for Stream 2), symptom ($\texttt{sympt}$), and
-disease ($\texttt{case}$). For the continuous random variable, it was
-drawn from a mixture of normal distributions with the mean and the
-variance differing according to symptom status and disease status.
-Specifically, normal distributions used for generating data are given by
+continuous random variable
+(![\texttt{x}](https://latex.codecogs.com/png.latex?%5Ctexttt%7Bx%7D "\texttt{x}"))
+representing a hypothetical biomarker level, indicators of capture
+status
+(![\texttt{y}\_1](https://latex.codecogs.com/png.latex?%5Ctexttt%7By%7D_1 "\texttt{y}_1")
+for Stream 1, and
+![\texttt{y}\_2](https://latex.codecogs.com/png.latex?%5Ctexttt%7By%7D_2 "\texttt{y}_2")
+for Stream 2), symptom
+(![\texttt{sympt}](https://latex.codecogs.com/png.latex?%5Ctexttt%7Bsympt%7D "\texttt{sympt}")),
+and disease
+(![\texttt{case}](https://latex.codecogs.com/png.latex?%5Ctexttt%7Bcase%7D "\texttt{case}")).
+For the continuous random variable, it was drawn from a mixture of
+normal distributions with the mean and the variance differing according
+to symptom status and disease status. Specifically, normal distributions
+used for generating data are given by
 
 ### read in self-defined functions and the simulated dataset
 
@@ -74,7 +82,8 @@ re.counts$CI$CI.RS.Jeffreys
 
     ## [1]  63.47027 171.54453
 
-results from using the estiamtor $\hat{N}_{\psi}$
+results from using the estiamtor
+![\hat{N}\_{\psi}](https://latex.codecogs.com/png.latex?%5Chat%7BN%7D_%7B%5Cpsi%7D "\hat{N}_{\psi}")
 
 ``` r
 re.counts$pointest$Nhat.psi
@@ -94,7 +103,8 @@ re.counts$CI$CI.Nhat.psi.Diri
 
     ## [1]  76.01301 166.25019
 
-results from using the estiamtor $\hat{N}_{\hat{\psi}^*}$
+results from using the estiamtor
+![\hat{N}\_{\hat{\psi}^\*}](https://latex.codecogs.com/png.latex?%5Chat%7BN%7D_%7B%5Chat%7B%5Cpsi%7D%5E%2A%7D "\hat{N}_{\hat{\psi}^*}")
 
 ``` r
 re.counts$pointest$Nhat.psihatstar
